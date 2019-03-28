@@ -14,16 +14,17 @@ namespace Overblog\DataLoader\Promise\Adapter\Webonyx\GraphQL;
 use GraphQL\Executor\Promise\Adapter\SyncPromiseAdapter as BaseSyncPromiseAdapter;
 use GraphQL\Executor\Promise\Promise;
 use Overblog\DataLoader\DataLoader;
+use Overblog\DataLoader\DataLoaderWithKeys;
 
 class SyncPromiseAdapter extends BaseSyncPromiseAdapter
 {
     protected function beforeWait(Promise $promise)
     {
-        DataLoader::await();
+        DataLoaderWithKeys::await();
     }
 
     protected function onWait(Promise $promise)
     {
-        DataLoader::await();
+        DataLoaderWithKeys::await();
     }
 }
