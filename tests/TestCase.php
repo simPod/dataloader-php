@@ -11,7 +11,7 @@
 
 namespace Overblog\DataLoader\Test;
 
-use Overblog\PromiseAdapter\Adapter\ReactPromiseAdapter;
+use Overblog\PromiseAdapter\Adapter\WebonyxGraphQLSyncPromiseAdapter;
 use Overblog\PromiseAdapter\PromiseAdapterInterface;
 
 abstract class TestCase extends \PHPUnit\Framework\TestCase
@@ -23,6 +23,6 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
 
     public function setUp(): void
     {
-        self::$promiseAdapter = new ReactPromiseAdapter();
+        self::$promiseAdapter = new WebonyxGraphQLSyncPromiseAdapter();
     }
 }

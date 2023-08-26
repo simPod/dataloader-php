@@ -352,18 +352,11 @@ class DataLoader implements DataLoaderInterface
                         sprintf('not return a Promise of an Array: %s.', gettype($values))
                     );
                 }
-                if (count($values) !== count($keys)) {
-                    throw new \RuntimeException(
-                        'DataLoader must be constructed with a function which accepts ' .
-                        'Array<key> and returns Promise<Array<value>>, but the function did ' .
-                        'not return a Promise of an Array of the same length as the Array of keys.'
-                    );
-                }
 
                 // Step through the values, resolving or rejecting each Promise in the
                 // loaded queue.
-                foreach ($queue as $index => $data) {
-                    $value = $values[$index];
+                foreach ($queue as $data) {
+                    $value = $values[$data['key']] ?? null;
                     if ($value instanceof \Exception) {
                         $data['reject']($value);
                     } else {

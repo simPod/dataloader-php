@@ -32,7 +32,7 @@ class WebonyxGraphQLSyncPromiseAdapter implements PromiseAdapterInterface
 
     public function __construct(?SyncPromiseAdapter $webonyxPromiseAdapter = null)
     {
-        $webonyxPromiseAdapter = $webonyxPromiseAdapter?:new SyncPromiseAdapter();
+        $webonyxPromiseAdapter = $webonyxPromiseAdapter?:new \Overblog\DataLoader\Promise\Adapter\Webonyx\GraphQL\SyncPromiseAdapter();
         $this->setWebonyxPromiseAdapter($webonyxPromiseAdapter);
     }
 
