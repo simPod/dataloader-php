@@ -29,7 +29,7 @@ class GuzzleHttpPromiseAdapter implements PromiseAdapterInterface
      *
      * @return Promise
      */
-    public function create(&$resolve = null, &$reject = null, callable $canceller = null)
+    public function create(&$resolve = null, &$reject = null, ?callable $canceller = null)
     {
         $queue = Utils::queue();
         $promise = new Promise([$queue, 'run'], $canceller);

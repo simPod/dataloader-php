@@ -25,7 +25,7 @@ interface PromiseAdapterInterface
      *
      * @return TPromise a Promise
      */
-    public function create(&$resolve = null, &$reject = null, callable $canceller = null);
+    public function create(&$resolve = null, &$reject = null, ?callable $canceller = null);
 
     /**
      * Creates a full filed Promise for a value if the value is not a promise.

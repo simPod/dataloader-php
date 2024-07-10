@@ -55,7 +55,7 @@ class WebonyxGraphQLSyncPromiseAdapter implements PromiseAdapterInterface
     /**
      * {@inheritdoc}
      */
-    public function create(&$resolve = null, &$reject = null, callable $canceller = null)
+    public function create(&$resolve = null, &$reject = null, ?callable $canceller = null)
     {
         $promise = $this->webonyxPromiseAdapter->create(function ($res, $rej) use (&$resolve, &$reject) {
             $resolve = $res;
