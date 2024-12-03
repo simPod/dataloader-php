@@ -30,7 +30,7 @@ class WebonyxGraphQLSyncPromiseAdapter implements PromiseAdapterInterface
      */
     private $webonyxPromiseAdapter;
 
-    public function __construct(SyncPromiseAdapter $webonyxPromiseAdapter = null)
+    public function __construct(?SyncPromiseAdapter $webonyxPromiseAdapter = null)
     {
         $webonyxPromiseAdapter = $webonyxPromiseAdapter?:new SyncPromiseAdapter();
         $this->setWebonyxPromiseAdapter($webonyxPromiseAdapter);
