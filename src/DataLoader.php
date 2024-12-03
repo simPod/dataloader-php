@@ -45,7 +45,7 @@ class DataLoader implements DataLoaderInterface
      */
     private $promiseAdapter;
 
-    public function __construct(callable $batchLoadFn, PromiseAdapterInterface $promiseFactory, Option $options = null)
+    public function __construct(callable $batchLoadFn, PromiseAdapterInterface $promiseFactory, ?Option $options = null)
     {
         $this->batchLoadFn = $batchLoadFn;
         $this->promiseAdapter = $promiseFactory;

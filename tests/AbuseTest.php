@@ -124,7 +124,7 @@ class AbuseTest extends TestCase
      * @param callable $batchLoadFn
      * @return DataLoader
      */
-    private static function idLoader(callable $batchLoadFn = null)
+    private static function idLoader(?callable $batchLoadFn = null)
     {
         if (null === $batchLoadFn) {
             $batchLoadFn = function ($keys) {

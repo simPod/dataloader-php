@@ -894,7 +894,7 @@ class DataLoadTest extends TestCase
         });
     }
 
-    private static function idLoader(Option $options = null, callable $batchLoadFnCallBack = null)
+    private static function idLoader(?Option $options = null, ?callable $batchLoadFnCallBack = null)
     {
         $loadCalls = new \ArrayObject();
         if (null === $batchLoadFnCallBack) {
