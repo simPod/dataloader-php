@@ -872,6 +872,19 @@ abstract class DataLoadTestCase extends TestCase
         $this->assertEquals($exception->getMessage(), 'DataLoader destroyed before promise complete.');
     }
 
+    public function testPromisesResolvedWithNoExternalReferences()
+    {
+        $resolvedValue = null;
+        [$loader] = self::idLoader();
+        $loader->load(1)->then(function ($v) use (&$resolvedValue) {
+            $resolvedValue = $v;
+        });
+        $loader = null;
+        DataLoader::await();
+
+        $this->assertSame(1, $resolvedValue, 'Promise has not been resolved');
+    }
+
     public function testCallingAwaitFunctionWhenNoInstanceOfDataLoaderShouldNotThrowError()
     {
         self::assertNull(DataLoader::await());
