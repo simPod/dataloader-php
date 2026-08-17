@@ -15,7 +15,7 @@ use \Exception;
 use Overblog\DataLoader\DataLoader;
 use Overblog\DataLoader\Option;
 
-class DataLoadTest extends TestCase
+abstract class DataLoadTestCase extends TestCase
 {
     /**
      * @group primary-api
@@ -324,7 +324,7 @@ class DataLoadTest extends TestCase
         $promise1->then(null, function ($error) use (&$caughtError) {
             $caughtError = $error;
         });
-        DataLoader::await();
+        DataLoader::await($promise1, false);
         $this->assertInstanceOf(\Exception::class, $caughtError);
         $this->assertEquals($caughtError->getMessage(), 'Odd: 1');
 
@@ -932,6 +932,7 @@ class DataLoadTest extends TestCase
 
     private function assertInstanceOfPromise($object)
     {
-        $this->assertTrue(self::$promiseAdapter->isPromise($object, true));
+        $adapter = self::$promiseAdapter;
+        $this->assertTrue($adapter->isPromise($object, true));
     }
 }
