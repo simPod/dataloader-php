@@ -251,7 +251,8 @@ Create a new `DataLoaderPHP` given a batch loading instance and options.
 
 Loads a key, returning a `Promise` for the value represented by that key.
 
-- *$key*: An key value to load.
+- *$key*: A scalar, array, or object key to load. The default `CacheMap` does not
+  support resource keys or recursive array keys.
 
 ##### `loadMany($keys)`
 
