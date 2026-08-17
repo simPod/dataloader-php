@@ -343,26 +343,8 @@ class DataLoader implements DataLoaderInterface
 
         // Await the resolution of the call to batchLoadFn.
         $batchPromise->then(
-            function ($values) use ($keys, $queue) {
-                // Assert the expected resolution from batchLoadFn.
-                if (!is_array($values) && !$values instanceof \Traversable) {
-                    throw new \RuntimeException(
-                        'DataLoader must be constructed with a function which accepts ' .
-                        'Array<key> and returns Promise<Array<value>>, but the function did ' .
-                        sprintf('not return a Promise of an Array: %s.', gettype($values))
-                    );
-                }
-
-                // Step through the values, resolving or rejecting each Promise in the
-                // loaded queue.
-                foreach ($queue as $data) {
-                    $value = $values[$data['key']] ?? null;
-                    if ($value instanceof \Exception) {
-                        $data['reject']($value);
-                    } else {
-                        $data['resolve']($value);
-                    }
-                };
+            function ($values) use ($queue) {
+                $this->resolveDispatchedBatch($values, $queue);
             }
         )->then(null, function ($error) use ($queue) {
             $this->failedDispatch($queue, $error);
@@ -370,12 +352,59 @@ class DataLoader implements DataLoaderInterface
     }
 
     /**
+     * Fan a resolved batch result out to the individual queued promises.
+     *
+     * @param mixed $values
+     * @param array $queue
+     */
+    private function resolveDispatchedBatch($values, $queue)
+    {
+        // Assert the expected resolution from batchLoadFn.
+        if (!is_array($values) && !$values instanceof \Traversable) {
+            throw new \RuntimeException(
+                'DataLoader must be constructed with a function which accepts ' .
+                'Array<key> and returns Promise<Array<value>>, but the function did ' .
+                sprintf('not return a Promise of an Array: %s.', gettype($values))
+            );
+        }
+
+        if ($values instanceof \Traversable && !$values instanceof \ArrayAccess) {
+            $values = iterator_to_array($values);
+        }
+
+        // Step through the values, resolving or rejecting each Promise in the
+        // loaded queue.
+        foreach ($queue as $index => $data) {
+            $key = $data['key'];
+            if (is_array($values)) {
+                if (array_is_list($values)) {
+                    $value = $values[$index] ?? null;
+                } elseif (is_int($key) || is_string($key) || is_float($key) || is_bool($key)) {
+                    $value = $values[$key] ?? null;
+                } else {
+                    $value = null;
+                }
+            } elseif ($values instanceof \ArrayAccess) {
+                $value = $values->offsetExists($key) ? $values->offsetGet($key) : null;
+            } else {
+                $value = null;
+            }
+
+            if ($value instanceof \Exception) {
+                $data['reject']($value);
+            } else {
+                $data['resolve']($value);
+            }
+        }
+    }
+
+    /**
      * Do not cache individual loads if the entire batch dispatch fails,
      * but still reject each request so they do not hang.
      * @param array      $queue
-     * @param \Exception $error
+     * @param \Throwable $error
      */
-    private function failedDispatch($queue, \Exception $error)
+    private function failedDispatch($queue, \Throwable $error)
     {
         foreach ($queue as $index => $data) {
             $this->clear($data['key']);
