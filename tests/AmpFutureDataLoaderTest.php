@@ -30,7 +30,7 @@ class AmpFutureDataLoaderTest extends TestCase
     {
         $loader = new DataLoader(
             static fn (array $keys): Future => Future::complete(['value', 'value']),
-            new AmpFutureAdapter(),
+            $this->createPromiseAdapter(),
         );
 
         self::assertSame(['value', 'value'], DataLoader::await($loader->loadMany(['first', 'second'])));
