@@ -122,6 +122,17 @@ class DataLoader implements DataLoaderInterface
             if (!$shouldBatch) {
                 // Otherwise dispatch the (queue of one) immediately.
                 $this->dispatchQueue();
+            } elseif ($this->getPromiseAdapter() instanceof \Overblog\PromiseAdapter\Adapter\AmpFutureAdapter) {
+                // On the fiber-based adapter there is no synchronous drain loop
+                // (SyncPromiseAdapter::onWait). Instead, schedule the batch to
+                // dispatch on the next event-loop tick, once the current call
+                // stack has finished enqueuing all loads for this frame. This
+                // mirrors the JS reference implementation's process.nextTick.
+                \Revolt\EventLoop::queue(function (): void {
+                    if ($this->needProcess()) {
+                        $this->dispatchQueue();
+                    }
+                });
             }
         }
 
@@ -265,6 +276,16 @@ class DataLoader implements DataLoaderInterface
             return null;
         }
 
+        // amp v3 futures are fiber-based and expose no `then()`; defer to the
+        // adapter's `await()` which suspends the current fiber until settled.
+        if ($promise instanceof \Amp\Future) {
+            if ([] === self::$instances) {
+                throw new \RuntimeException('Found no active DataLoader instance.');
+            }
+
+            return self::$instances[0]->getPromiseAdapter()->await($promise, $unwrap);
+        }
+
         if (is_callable([$promise, 'then'])) {
             $isPromiseCompleted = false;
             $resolvedValue = null;
@@ -322,7 +343,7 @@ class DataLoader implements DataLoaderInterface
 
     private static function awaitInstances()
     {
-        if (empty(self::$activeInstances)) {
+        if ([] === self::$activeInstances) {
             return;
         }
 
@@ -405,6 +426,21 @@ class DataLoader implements DataLoaderInterface
             $batchPromise = $batchLoadFn($keys);
         } catch (\Throwable $error) {
             $this->failedDispatch($queue, $error);
+
+            return;
+        }
+
+        // amp v3 futures are fiber-based and expose no `then()`; drive the
+        // fan-out inside a fiber via `Amp\async` instead.
+        if ($batchPromise instanceof \Amp\Future) {
+            \Amp\async(function () use ($batchPromise, $queue) {
+                try {
+                    $values = $batchPromise->await();
+                    $this->resolveDispatchedBatch($values, $queue);
+                } catch (\Throwable $error) {
+                    $this->failedDispatch($queue, $error);
+                }
+            });
 
             return;
         }
