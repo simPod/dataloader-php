@@ -71,10 +71,13 @@ minimal outgoing data requests.
 #### Batch Function
 
 A batch loading function accepts an Array of keys, and returns a Promise which
-resolves to an Array of values. There are a few constraints that must be upheld:
+resolves to values in one of these forms:
 
- * The Array of values must be the same length as the Array of keys.
- * Each index in the Array of values must correspond to the same index in the Array of keys.
+ * A list with the same length and order as the Array of keys.
+ * A keyed Array or `ArrayAccess` value. Missing keys resolve to `null`.
+
+Object keys require positional list results or an `ArrayAccess` result that
+supports those keys.
 
 For example, if your batch function was provided the Array of keys: `[ 2, 9, 6, 1 ]`,
 and loading from a back-end service returned the values:

@@ -84,14 +84,13 @@ abstract class AbuseTestCase extends TestCase
     /**
      * @group provides-descriptive-error-messages-for-api-abuse
      */
-    public function testBatchFunctionMustPromiseAnArrayOfCorrectLength()
+    public function testBatchFunctionMayReturnMissingValues()
     {
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('DataLoader must be constructed with a function which accepts Array<key> and returns Promise<Array<value>>, but the function did not return a Promise of an Array of the same length as the Array of keys.');
-
-        DataLoader::await(self::idLoader(function () {
+        $value = DataLoader::await(self::idLoader(function () {
             return self::$promiseAdapter->createFulfilled([]);
         })->load(1));
+
+        $this->assertNull($value);
     }
 
     /**

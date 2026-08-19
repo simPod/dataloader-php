@@ -52,6 +52,24 @@ abstract class DataLoadTestCase extends TestCase
     }
 
     /**
+     * @group accepts-any-kind-of-key
+     */
+    public function testSupportsKeyedResultsWithMissingValues()
+    {
+        $loader = new DataLoader(function () {
+            return self::$promiseAdapter->createFulfilled(['present' => 'value']);
+        }, self::$promiseAdapter);
+
+        list($present, $missing) = DataLoader::await(self::$promiseAdapter->createAll([
+            $loader->load('present'),
+            $loader->load('missing'),
+        ]));
+
+        $this->assertEquals('value', $present);
+        $this->assertNull($missing);
+    }
+
+    /**
      * @group primary-api
      */
     public function testSupportsLoadingMultipleKeysFromAnArrayIterator()
