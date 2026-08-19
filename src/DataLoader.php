@@ -11,6 +11,7 @@
 
 namespace Overblog\DataLoader;
 
+use Overblog\PromiseAdapter\AsyncPromiseAdapterInterface;
 use Overblog\PromiseAdapter\PromiseAdapterInterface;
 
 /**
@@ -122,13 +123,8 @@ class DataLoader implements DataLoaderInterface
             if (!$shouldBatch) {
                 // Otherwise dispatch the (queue of one) immediately.
                 $this->dispatchQueue();
-            } elseif ($this->getPromiseAdapter() instanceof \Overblog\PromiseAdapter\Adapter\AmpFutureAdapter) {
-                // On the fiber-based adapter there is no synchronous drain loop
-                // (SyncPromiseAdapter::onWait). Instead, schedule the batch to
-                // dispatch on the next event-loop tick, once the current call
-                // stack has finished enqueuing all loads for this frame. This
-                // mirrors the JS reference implementation's process.nextTick.
-                \Revolt\EventLoop::queue(function (): void {
+            } elseif ($this->getPromiseAdapter() instanceof AsyncPromiseAdapterInterface) {
+                $this->getPromiseAdapter()->enqueue(function (): void {
                     if ($this->needProcess()) {
                         $this->dispatchQueue();
                     }
@@ -216,7 +212,9 @@ class DataLoader implements DataLoaderInterface
                 }
             }
 
-            $this->getPromiseAdapter()->await();
+            if (!$this->getPromiseAdapter() instanceof AsyncPromiseAdapterInterface) {
+                $this->getPromiseAdapter()->await();
+            }
         }
     }
 
@@ -229,7 +227,9 @@ class DataLoader implements DataLoaderInterface
     {
         if ($this->needProcess()) {
             $this->getPromiseAdapter()->await();
-            $this->dispatchQueue();
+            if ($this->needProcess()) {
+                $this->dispatchQueue();
+            }
             $this->getPromiseAdapter()->await();
         }
     }
@@ -425,17 +425,17 @@ class DataLoader implements DataLoaderInterface
             return;
         }
 
-        // amp v3 futures are fiber-based and expose no `then()`; drive the
-        // fan-out inside a fiber via `Amp\async` instead.
-        if ($batchPromise instanceof \Amp\Future) {
-            \Amp\async(function () use ($batchPromise, $queue) {
-                try {
-                    $values = $batchPromise->await();
+        $promiseAdapter = $this->getPromiseAdapter();
+        if ($promiseAdapter instanceof AsyncPromiseAdapterInterface && $promiseAdapter->isPromise($batchPromise, true)) {
+            $promiseAdapter->observe(
+                $batchPromise,
+                function ($values) use ($queue): void {
                     $this->resolveDispatchedBatch($values, $queue);
-                } catch (\Throwable $error) {
+                },
+                function (\Throwable $error) use ($queue): void {
                     $this->failedDispatch($queue, $error);
-                }
-            });
+                },
+            );
 
             return;
         }
