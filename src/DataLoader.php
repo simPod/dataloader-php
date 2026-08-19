@@ -11,6 +11,7 @@
 
 namespace Overblog\DataLoader;
 
+use Overblog\PromiseAdapter\AsyncPromiseAdapterInterface;
 use Overblog\PromiseAdapter\PromiseAdapterInterface;
 
 /**
@@ -122,6 +123,12 @@ class DataLoader implements DataLoaderInterface
             if (!$shouldBatch) {
                 // Otherwise dispatch the (queue of one) immediately.
                 $this->dispatchQueue();
+            } elseif ($this->getPromiseAdapter() instanceof AsyncPromiseAdapterInterface) {
+                $this->getPromiseAdapter()->enqueue(function (): void {
+                    if ($this->needProcess()) {
+                        $this->dispatchQueue();
+                    }
+                });
             }
         }
 
@@ -205,7 +212,9 @@ class DataLoader implements DataLoaderInterface
                 }
             }
 
-            $this->getPromiseAdapter()->await();
+            if (!$this->getPromiseAdapter() instanceof AsyncPromiseAdapterInterface) {
+                $this->getPromiseAdapter()->await();
+            }
         }
     }
 
@@ -218,7 +227,9 @@ class DataLoader implements DataLoaderInterface
     {
         if ($this->needProcess()) {
             $this->getPromiseAdapter()->await();
-            $this->dispatchQueue();
+            if ($this->needProcess()) {
+                $this->dispatchQueue();
+            }
             $this->getPromiseAdapter()->await();
         }
     }
@@ -265,36 +276,41 @@ class DataLoader implements DataLoaderInterface
             return null;
         }
 
-        if (is_callable([$promise, 'then'])) {
-            $isPromiseCompleted = false;
-            $resolvedValue = null;
-            $rejectedReason = null;
-
-            $promise->then(
-                function ($value) use (&$isPromiseCompleted, &$resolvedValue) {
-                    $isPromiseCompleted = true;
-                    $resolvedValue = $value;
-                },
-                function ($reason) use (&$isPromiseCompleted, &$rejectedReason) {
-                    $isPromiseCompleted = true;
-                    $rejectedReason = $reason;
-                }
-            );
-
-            //Promise is completed?
-            if ($isPromiseCompleted) {
-                // rejected ?
-                if ($rejectedReason instanceof \Throwable) {
-                    if (!$unwrap) {
-                        return $rejectedReason;
-                    }
-                    throw $rejectedReason;
-                }
-
-                return $resolvedValue;
+        if (!is_callable([$promise, 'then'])) {
+            if (is_object($promise) && null !== self::$promiseAdapters && isset(self::$promiseAdapters[$promise])) {
+                return self::$promiseAdapters[$promise]->await($promise, $unwrap);
             }
-        } else {
+
             throw new \InvalidArgumentException(sprintf('The "%s" method must be called with a Promise ("then" method).', __METHOD__));
+        }
+
+        $isPromiseCompleted = false;
+        $resolvedValue = null;
+        $rejectedReason = null;
+
+        $promise->then(
+            function ($value) use (&$isPromiseCompleted, &$resolvedValue) {
+                $isPromiseCompleted = true;
+                $resolvedValue = $value;
+            },
+            function ($reason) use (&$isPromiseCompleted, &$rejectedReason) {
+                $isPromiseCompleted = true;
+                $rejectedReason = $reason;
+            }
+        );
+
+        //Promise is completed?
+        if ($isPromiseCompleted) {
+            // rejected ?
+            if ($rejectedReason instanceof \Throwable) {
+                if (!$unwrap) {
+                    return $rejectedReason;
+                }
+
+                throw $rejectedReason;
+            }
+
+            return $resolvedValue;
         }
 
         if (null !== self::$promiseAdapters && isset(self::$promiseAdapters[$promise])) {
@@ -322,7 +338,7 @@ class DataLoader implements DataLoaderInterface
 
     private static function awaitInstances()
     {
-        if (empty(self::$activeInstances)) {
+        if ([] === self::$activeInstances) {
             return;
         }
 
@@ -409,6 +425,21 @@ class DataLoader implements DataLoaderInterface
             return;
         }
 
+        $promiseAdapter = $this->getPromiseAdapter();
+        if ($promiseAdapter instanceof AsyncPromiseAdapterInterface && $promiseAdapter->isPromise($batchPromise, true)) {
+            $promiseAdapter->observe(
+                $batchPromise,
+                function ($values) use ($queue): void {
+                    $this->resolveDispatchedBatch($values, $queue);
+                },
+                function (\Throwable $error) use ($queue): void {
+                    $this->failedDispatch($queue, $error);
+                },
+            );
+
+            return;
+        }
+
         // Assert the expected response from batchLoadFn
         if (!$batchPromise || !is_callable([$batchPromise, 'then'])) {
             $this->failedDispatch($queue, new \RuntimeException(
@@ -422,37 +453,48 @@ class DataLoader implements DataLoaderInterface
 
         // Await the resolution of the call to batchLoadFn.
         $batchPromise->then(
-            function ($values) use ($keys, $queue) {
-                // Assert the expected resolution from batchLoadFn.
-                if (!is_array($values) && !$values instanceof \Traversable) {
-                    throw new \RuntimeException(
-                        'DataLoader must be constructed with a function which accepts ' .
-                        'Array<key> and returns Promise<Array<value>>, but the function did ' .
-                        sprintf('not return a Promise of an Array: %s.', gettype($values))
-                    );
-                }
-                if (count($values) !== count($keys)) {
-                    throw new \RuntimeException(
-                        'DataLoader must be constructed with a function which accepts ' .
-                        'Array<key> and returns Promise<Array<value>>, but the function did ' .
-                        'not return a Promise of an Array of the same length as the Array of keys.'
-                    );
-                }
-
-                // Step through the values, resolving or rejecting each Promise in the
-                // loaded queue.
-                foreach ($queue as $index => $data) {
-                    $value = $values[$index];
-                    if ($value instanceof \Throwable) {
-                        $data['reject']($value);
-                    } else {
-                        $data['resolve']($value);
-                    }
-                };
+            function ($values) use ($queue) {
+                $this->resolveDispatchedBatch($values, $queue);
             }
         )->then(null, function ($error) use ($queue) {
             $this->failedDispatch($queue, $error);
         });
+    }
+
+    /**
+     * Fan a resolved batch result out to the individual queued promises.
+     *
+     * @param mixed $values
+     * @param array $queue
+     */
+    private function resolveDispatchedBatch($values, $queue)
+    {
+        // Assert the expected response from batchLoadFn.
+        if (!is_array($values) && !$values instanceof \Traversable) {
+            throw new \RuntimeException(
+                'DataLoader must be constructed with a function which accepts ' .
+                'Array<key> and returns Promise<Array<value>>, but the function did ' .
+                sprintf('not return a Promise of an Array: %s.', gettype($values))
+            );
+        }
+        if (count($values) !== count($queue)) {
+            throw new \RuntimeException(
+                'DataLoader must be constructed with a function which accepts ' .
+                'Array<key> and returns Promise<Array<value>>, but the function did ' .
+                'not return a Promise of an Array of the same length as the Array of keys.'
+            );
+        }
+
+        // Step through the values, resolving or rejecting each Promise in the
+        // loaded queue.
+        foreach ($queue as $index => $data) {
+            $value = $values[$index];
+            if ($value instanceof \Throwable) {
+                $data['reject']($value);
+            } else {
+                $data['resolve']($value);
+            }
+        }
     }
 
     /**
