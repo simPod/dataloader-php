@@ -276,46 +276,41 @@ class DataLoader implements DataLoaderInterface
             return null;
         }
 
-        // amp v3 futures are fiber-based and expose no `then()`; defer to the
-        // adapter's `await()` which suspends the current fiber until settled.
-        if ($promise instanceof \Amp\Future) {
-            if ([] === self::$instances) {
-                throw new \RuntimeException('Found no active DataLoader instance.');
+        if (!is_callable([$promise, 'then'])) {
+            if (is_object($promise) && null !== self::$promiseAdapters && isset(self::$promiseAdapters[$promise])) {
+                return self::$promiseAdapters[$promise]->await($promise, $unwrap);
             }
 
-            return self::$instances[0]->getPromiseAdapter()->await($promise, $unwrap);
+            throw new \InvalidArgumentException(sprintf('The "%s" method must be called with a Promise ("then" method).', __METHOD__));
         }
 
-        if (is_callable([$promise, 'then'])) {
-            $isPromiseCompleted = false;
-            $resolvedValue = null;
-            $rejectedReason = null;
+        $isPromiseCompleted = false;
+        $resolvedValue = null;
+        $rejectedReason = null;
 
-            $promise->then(
-                function ($value) use (&$isPromiseCompleted, &$resolvedValue) {
-                    $isPromiseCompleted = true;
-                    $resolvedValue = $value;
-                },
-                function ($reason) use (&$isPromiseCompleted, &$rejectedReason) {
-                    $isPromiseCompleted = true;
-                    $rejectedReason = $reason;
-                }
-            );
-
-            //Promise is completed?
-            if ($isPromiseCompleted) {
-                // rejected ?
-                if ($rejectedReason instanceof \Throwable) {
-                    if (!$unwrap) {
-                        return $rejectedReason;
-                    }
-                    throw $rejectedReason;
-                }
-
-                return $resolvedValue;
+        $promise->then(
+            function ($value) use (&$isPromiseCompleted, &$resolvedValue) {
+                $isPromiseCompleted = true;
+                $resolvedValue = $value;
+            },
+            function ($reason) use (&$isPromiseCompleted, &$rejectedReason) {
+                $isPromiseCompleted = true;
+                $rejectedReason = $reason;
             }
-        } else {
-            throw new \InvalidArgumentException(sprintf('The "%s" method must be called with a Promise ("then" method).', __METHOD__));
+        );
+
+        //Promise is completed?
+        if ($isPromiseCompleted) {
+            // rejected ?
+            if ($rejectedReason instanceof \Throwable) {
+                if (!$unwrap) {
+                    return $rejectedReason;
+                }
+
+                throw $rejectedReason;
+            }
+
+            return $resolvedValue;
         }
 
         if (null !== self::$promiseAdapters && isset(self::$promiseAdapters[$promise])) {

@@ -15,11 +15,27 @@ use Amp\Future;
 use Error;
 use Overblog\DataLoader\DataLoader;
 use Overblog\PromiseAdapter\Adapter\AmpFutureAdapter;
+use Overblog\PromiseAdapter\PromiseAdapterInterface;
 
 use function Amp\async;
 
 class AmpFutureDataLoaderTest extends TestCase
 {
+    protected function createPromiseAdapter(): PromiseAdapterInterface
+    {
+        return new AmpFutureAdapter();
+    }
+
+    public function testAwaitUsesTheRegisteredAmpFutureAdapter()
+    {
+        $loader = new DataLoader(
+            static fn (array $keys): Future => Future::complete(['value', 'value']),
+            new AmpFutureAdapter(),
+        );
+
+        self::assertSame(['value', 'value'], DataLoader::await($loader->loadMany(['first', 'second'])));
+    }
+
     public function testRejectsEveryQueuedLoadWhenBatchFutureFailsWithAnError()
     {
         $loader = new DataLoader(
