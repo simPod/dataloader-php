@@ -25,7 +25,7 @@ use function Amp\Future\await;
  * The DataLoader core is patched to cooperate with this model via `Amp\async`
  * and `Future::await()` instead of `->then()`.
  *
- * @implements PromiseAdapterInterface<Future>
+ * @implements PromiseAdapterInterface<Future<mixed>>
  */
 class AmpFutureAdapter implements PromiseAdapterInterface
 {
