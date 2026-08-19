@@ -453,37 +453,48 @@ class DataLoader implements DataLoaderInterface
 
         // Await the resolution of the call to batchLoadFn.
         $batchPromise->then(
-            function ($values) use ($keys, $queue) {
-                // Assert the expected resolution from batchLoadFn.
-                if (!is_array($values) && !$values instanceof \Traversable) {
-                    throw new \RuntimeException(
-                        'DataLoader must be constructed with a function which accepts ' .
-                        'Array<key> and returns Promise<Array<value>>, but the function did ' .
-                        sprintf('not return a Promise of an Array: %s.', gettype($values))
-                    );
-                }
-                if (count($values) !== count($keys)) {
-                    throw new \RuntimeException(
-                        'DataLoader must be constructed with a function which accepts ' .
-                        'Array<key> and returns Promise<Array<value>>, but the function did ' .
-                        'not return a Promise of an Array of the same length as the Array of keys.'
-                    );
-                }
-
-                // Step through the values, resolving or rejecting each Promise in the
-                // loaded queue.
-                foreach ($queue as $index => $data) {
-                    $value = $values[$index];
-                    if ($value instanceof \Throwable) {
-                        $data['reject']($value);
-                    } else {
-                        $data['resolve']($value);
-                    }
-                };
+            function ($values) use ($queue) {
+                $this->resolveDispatchedBatch($values, $queue);
             }
         )->then(null, function ($error) use ($queue) {
             $this->failedDispatch($queue, $error);
         });
+    }
+
+    /**
+     * Fan a resolved batch result out to the individual queued promises.
+     *
+     * @param mixed $values
+     * @param array $queue
+     */
+    private function resolveDispatchedBatch($values, $queue)
+    {
+        // Assert the expected response from batchLoadFn.
+        if (!is_array($values) && !$values instanceof \Traversable) {
+            throw new \RuntimeException(
+                'DataLoader must be constructed with a function which accepts ' .
+                'Array<key> and returns Promise<Array<value>>, but the function did ' .
+                sprintf('not return a Promise of an Array: %s.', gettype($values))
+            );
+        }
+        if (count($values) !== count($queue)) {
+            throw new \RuntimeException(
+                'DataLoader must be constructed with a function which accepts ' .
+                'Array<key> and returns Promise<Array<value>>, but the function did ' .
+                'not return a Promise of an Array of the same length as the Array of keys.'
+            );
+        }
+
+        // Step through the values, resolving or rejecting each Promise in the
+        // loaded queue.
+        foreach ($queue as $index => $data) {
+            $value = $values[$index];
+            if ($value instanceof \Throwable) {
+                $data['reject']($value);
+            } else {
+                $data['resolve']($value);
+            }
+        }
     }
 
     /**
