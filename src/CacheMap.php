@@ -14,29 +14,59 @@ namespace Overblog\DataLoader;
 class CacheMap
 {
     private $promiseCache = [];
+    private $objectPromiseCache;
+    private $objectIds;
+    private $nextObjectId = 0;
 
     public function get($key)
     {
-        $key = self::serializedKey($key);
+        if (is_object($key)) {
+            return null !== $this->objectPromiseCache && isset($this->objectPromiseCache[$key])
+                ? $this->objectPromiseCache[$key]
+                : null;
+        }
+
+        $key = $this->serializedKey($key);
 
         return isset($this->promiseCache[$key]) ? $this->promiseCache[$key] : null;
     }
 
     public function has($key)
     {
-        return isset($this->promiseCache[self::serializedKey($key)]);
+        if (is_object($key)) {
+            return null !== $this->objectPromiseCache && isset($this->objectPromiseCache[$key]);
+        }
+
+        return isset($this->promiseCache[$this->serializedKey($key)]);
     }
 
     public function set($key, $promise)
     {
-        $this->promiseCache[self::serializedKey($key)] = $promise;
+        if (is_object($key)) {
+            if (null === $this->objectPromiseCache) {
+                $this->objectPromiseCache = new \WeakMap();
+            }
+            $this->objectPromiseCache[$key] = $promise;
+
+            return $this;
+        }
+
+        $this->promiseCache[$this->serializedKey($key)] = $promise;
 
         return $this;
     }
 
     public function clear($key)
     {
-        unset($this->promiseCache[self::serializedKey($key)]);
+        if (is_object($key)) {
+            if (null !== $this->objectPromiseCache) {
+                unset($this->objectPromiseCache[$key]);
+            }
+
+            return $this;
+        }
+
+        unset($this->promiseCache[$this->serializedKey($key)]);
 
         return $this;
     }
@@ -44,18 +74,54 @@ class CacheMap
     public function clearAll()
     {
         $this->promiseCache = [];
+        $this->objectPromiseCache = null;
 
         return $this;
     }
 
-    private static function serializedKey($key)
+    private function serializedKey($key)
     {
-        if (is_object($key)) {
-            return spl_object_hash($key);
-        } elseif (is_array($key)) {
-            return json_encode($key);
+        $arrayReferences = [];
+
+        return serialize($this->encodeValue($key, $arrayReferences));
+    }
+
+    private function encodeValue(&$value, array &$arrayReferences)
+    {
+        $type = gettype($value);
+        if ('resource' === $type || 'resource (closed)' === $type) {
+            throw new \InvalidArgumentException('Resources cannot be used in CacheMap keys.');
+        }
+        if (is_object($value)) {
+            if (null === $this->objectIds) {
+                $this->objectIds = new \WeakMap();
+            }
+            if (!isset($this->objectIds[$value])) {
+                $this->objectIds[$value] = ++$this->nextObjectId;
+            }
+
+            return ['object', $this->objectIds[$value]];
+        }
+        if (!is_array($value)) {
+            return [$type, $value];
         }
 
-        return $key;
+        $referenceHolder = [&$value];
+        $referenceId = \ReflectionReference::fromArrayElement($referenceHolder, 0)->getId();
+        if (isset($arrayReferences[$referenceId])) {
+            throw new \InvalidArgumentException('Recursive arrays cannot be used in CacheMap keys.');
+        }
+
+        $arrayReferences[$referenceId] = true;
+        $items = [];
+        try {
+            foreach ($value as $key => &$item) {
+                $items[] = [[gettype($key), $key], $this->encodeValue($item, $arrayReferences)];
+            }
+        } finally {
+            unset($item, $arrayReferences[$referenceId]);
+        }
+
+        return ['array', $items];
     }
 }
